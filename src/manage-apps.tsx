@@ -19,7 +19,6 @@ const agent = new https.Agent({
   rejectUnauthorized: REJECT_UNAUTHORIZED,
 });
 
-
 // Fectch the list of applications
 async function fetchApps(): Promise<any[]> {
   const url = `${TRUENAS_API_BASE_URL}/chart/release`;
@@ -78,7 +77,10 @@ async function manageApp(action: 0 | 1, appName: string, state: string) {
       throw new Error(`Failed to ${action} application: ${response.statusText}`);
     }
 
-    showToast({ style: Toast.Style.Success, title: action === 1 ? `Application started successfully` : `Application stopped successfully` });
+    showToast({
+      style: Toast.Style.Success,
+      title: action === 1 ? `Application started successfully` : `Application stopped successfully`,
+    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
     showToast({ style: Toast.Style.Failure, title: `Error`, message: errorMessage });
@@ -91,7 +93,7 @@ async function restartApp(appName: string, state: string) {
     return;
   }
   manageApp(0, appName, state);
-  setTimeout(()=>{
+  setTimeout(() => {
     manageApp(1, appName, state);
   }, 5000);
   showToast({ style: Toast.Style.Success, title: `Application restarted successfully` });
@@ -111,7 +113,6 @@ export default function Command() {
     }
     loadApps();
   }, []);
-
 
   return (
     <List isLoading={isLoading}>

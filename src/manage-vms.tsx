@@ -1,7 +1,7 @@
-import React from 'react';
-import { showToast, Toast, getPreferenceValues, List, ActionPanel, Action } from '@raycast/api';
+import React from "react";
+import { showToast, Toast, getPreferenceValues, List, ActionPanel, Action } from "@raycast/api";
 import https from "https";
-import fetch from 'node-fetch';
+import fetch from "node-fetch";
 
 // Define the TrueNAS API base URL
 const preferences = getPreferenceValues<{
@@ -19,7 +19,6 @@ const agent = new https.Agent({
   rejectUnauthorized: REJECT_UNAUTHORIZED,
 });
 
-
 // Function to fetch the list of VMs
 async function fetchVMs(): Promise<any[]> {
   const url = `${TRUENAS_API_BASE_URL}/vm`;
@@ -28,17 +27,17 @@ async function fetchVMs(): Promise<any[]> {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        "Authorization": `Bearer ${API_KEY}`,
+        Authorization: `Bearer ${API_KEY}`,
         "Content-Type": "application/json",
       },
-      agent
+      agent,
     });
 
     if (!response.ok) {
       throw new Error(`Failed to fetch VMs: ${response.statusText}`);
     }
 
-    return await response.json() as any[];
+    return (await response.json()) as any[];
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
     showToast({ style: Toast.Style.Failure, title: `Error`, message: errorMessage });
@@ -61,18 +60,20 @@ async function manageVM(action: "start" | "stop", vmId: string, state: string) {
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${API_KEY}`,
+        Authorization: `Bearer ${API_KEY}`,
         "Content-Type": "application/json",
       },
-      agent
+      agent,
     });
 
     if (!response.ok) {
       throw new Error(`Failed to ${action} VM: ${response.statusText}`);
     }
 
-    showToast({ style: Toast.Style.Success, title: action === "start" ? `VM started successfully` : `VM stopped successfully` });
-
+    showToast({
+      style: Toast.Style.Success,
+      title: action === "start" ? `VM started successfully` : `VM stopped successfully`,
+    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
     showToast({ style: Toast.Style.Failure, title: `Error`, message: errorMessage });
@@ -83,7 +84,7 @@ async function manageVM(action: "start" | "stop", vmId: string, state: string) {
 // This function first stops the VM and then starts it again after a delay
 // Note: The delay is set to 5 seconds (5000 milliseconds) in this example
 async function restartVM(vmId: string, state: string) {
-  if(state === "STOPPED") {
+  if (state === "STOPPED") {
     showToast({ style: Toast.Style.Failure, title: `VM is stopped` });
     return;
   }
@@ -117,9 +118,9 @@ export default function Command() {
           subtitle={`Status: ${vm.status.state}`}
           actions={
             <ActionPanel>
-              <Action title="Start VM" onAction={() => manageVM("start", vm.id, vm.status.state)} />
-              <Action title="Stop VM" onAction={() => manageVM("stop", vm.id, vm.status.state)} />
-              <Action title="Restart VM" onAction={() => restartVM(vm.id, vm.status.state)} />
+              <Action title="Start Vm" onAction={() => manageVM("start", vm.id, vm.status.state)} />
+              <Action title="Stop Vm" onAction={() => manageVM("stop", vm.id, vm.status.state)} />
+              <Action title="Restart Vm" onAction={() => restartVM(vm.id, vm.status.state)} />
             </ActionPanel>
           }
         />
