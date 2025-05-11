@@ -20,7 +20,7 @@ const agent = new https.Agent({
 });
 
 // Fectch the list of applications
-async function fetchApps(): Promise<any[]> {
+async function fetchApps(): Promise<object[]> {
   const url = `${TRUENAS_API_BASE_URL}/chart/release`;
 
   try {
@@ -37,7 +37,7 @@ async function fetchApps(): Promise<any[]> {
       throw new Error(`Failed to fetch applications: ${response.statusText}`);
     }
 
-    return (await response.json()) as any[];
+    return (await response.json()) as object[];
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
     showToast({ style: Toast.Style.Failure, title: `Error`, message: errorMessage });
@@ -101,7 +101,7 @@ async function restartApp(appName: string, state: string) {
 
 // Main component
 export default function Command() {
-  const [apps, setApps] = React.useState<any[]>([]);
+  const [apps, setApps] = React.useState<object[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
 
   // Fetch the list of applications when the component mounts

@@ -20,7 +20,7 @@ const agent = new https.Agent({
 });
 
 // Function to fetch the list of VMs
-async function fetchVMs(): Promise<any[]> {
+async function fetchVMs(): Promise<object[]> {
   const url = `${TRUENAS_API_BASE_URL}/vm`;
 
   try {
@@ -37,7 +37,7 @@ async function fetchVMs(): Promise<any[]> {
       throw new Error(`Failed to fetch VMs: ${response.statusText}`);
     }
 
-    return (await response.json()) as any[];
+    return (await response.json()) as object[];
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
     showToast({ style: Toast.Style.Failure, title: `Error`, message: errorMessage });
@@ -96,12 +96,12 @@ async function restartVM(vmId: string, state: string) {
 
 // Main command
 export default function Command() {
-  const [vms, setVMs] = React.useState<any[]>([]);
+  const [vms, setVMs] = React.useState<object[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
     async function loadVMs() {
-      const vmList: any[] = await fetchVMs();
+      const vmList: object[] = await fetchVMs();
       setVMs(vmList);
       setIsLoading(false);
     }
