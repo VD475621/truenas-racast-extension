@@ -3,19 +3,22 @@ import { showToast, Toast, getPreferenceValues, List, ActionPanel, Action } from
 import https from "https";
 import fetch from 'node-fetch';
 
-const agent = new https.Agent({
-  rejectUnauthorized: false,
-});
-
 // Define the TrueNAS API base URL
 const preferences = getPreferenceValues<{
   apiUrl: string;
   apiKey: string;
+  rejectUnauthorized: boolean;
 }>();
 
 const API_URL = preferences.apiUrl;
 const API_KEY = preferences.apiKey;
+const REJECT_UNAUTHORIZED = preferences.rejectUnauthorized;
 const TRUENAS_API_BASE_URL = `${API_URL}/api/v2.0`;
+
+const agent = new https.Agent({
+  rejectUnauthorized: REJECT_UNAUTHORIZED,
+});
+
 
 // Function to fetch the list of VMs
 async function fetchVMs(): Promise<any[]> {

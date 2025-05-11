@@ -41,6 +41,15 @@
       "title": "API Key",
       "placeholder": "e.g. 1234567890abcdef1234567890abcdef",
       "required": true
+    },
+    {
+      "name": "rejectUnauthorized",
+      "description": "Whether to reject/ignore unauthorized SSL certificates",
+      "type": "checkbox",
+      "title": "Reject Unauthorized SSL Certificates",
+      "placeholder": "e.g. true",
+      "required": true,
+      "default": true
     }
   ],
   "dependencies": {
