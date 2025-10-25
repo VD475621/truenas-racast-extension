@@ -317,7 +317,10 @@ export class TrueNASClient {
   }
 
   async restartVM(vmId: number): Promise<void> {
-    await this.call<void>('vm.restart', [vmId]);
+    await this.stopVM(vmId, { force: true });
+    // Wait for the VM to stop
+    await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+    await this.startVM(vmId);
     console.log(`VM ${vmId} restarted`);
   }
 
