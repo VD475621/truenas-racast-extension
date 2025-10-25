@@ -28,11 +28,11 @@
   ],
   "preferences": [
     {
-      "name": "apiUrl",
-      "description": "The URL of your TrueNAS API",
+      "name": "address",
+      "description": "The address of your TrueNAS API",
       "type": "textfield",
-      "title": "TrueNAS API URL",
-      "placeholder": "e.g. http://192.168.1.100/api/v2.0",
+      "title": "TrueNAS API Address",
+      "placeholder": "e.g. 192.168.1.100:443",
       "required": true
     },
     {
@@ -44,31 +44,33 @@
       "required": true
     },
     {
-      "name": "rejectUnauthorized",
-      "label": "rejectUnauthorized",
-      "description": "Whether to reject/ignore unauthorized SSL certificates",
+      "name": "secure",
+      "label": "Secure",
+      "description": "Whether to use a secure connection (HTTPS) to connect to the TrueNAS API",
       "type": "checkbox",
-      "title": "Reject Unauthorized SSL Certificates",
+      "title": "Use Secure Connection (HTTPS)",
       "placeholder": "e.g. true",
       "required": true,
       "default": true
     }
   ],
   "dependencies": {
+    "@raycast/api": "^1.53.0",
     "@raycast/utils": "^1.17.0",
     "node-fetch": "^3.3.2",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "@raycast/api": "^1.53.0"
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@raycast/eslint-config": "^2.0.4",
     "@types/node": "22.13.10",
     "@types/node-fetch": "^2.6.12",
     "@types/react": "19.0.10",
+    "@types/ws": "^8.18.1",
     "eslint": "^9.22.0",
     "prettier": "^3.5.3",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "ws": "^8.18.3"
   },
   "scripts": {
     "build": "ray build",

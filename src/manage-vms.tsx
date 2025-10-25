@@ -1,112 +1,135 @@
 import React from "react";
 import { showToast, Toast, getPreferenceValues, List, ActionPanel, Action } from "@raycast/api";
-import https from "https";
-import fetch from "node-fetch";
+import { TrueNASClient, VMState } from "./lib/truenas";
 
-// Define the TrueNAS API base URL
+// Get preferences
 const preferences = getPreferenceValues<{
-  apiUrl: string;
+  address: string;
   apiKey: string;
-  rejectUnauthorized: boolean;
+  secure: boolean;
 }>();
 
-const API_URL = preferences.apiUrl;
-const API_KEY = preferences.apiKey;
-const REJECT_UNAUTHORIZED = preferences.rejectUnauthorized;
-const TRUENAS_API_BASE_URL = `${API_URL}/api/v2.0`;
+// Global client instance - will be created lazily
+let client: TrueNASClient | null = null;
 
-const agent = new https.Agent({
-  rejectUnauthorized: REJECT_UNAUTHORIZED,
-});
-
-// Function to fetch the list of VMs
-async function fetchVMs(): Promise<object[]> {
-  const url = `${TRUENAS_API_BASE_URL}/vm`;
-
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      agent,
+// Function to get or create client instance
+function getClient(): TrueNASClient {
+  if (!client) {
+    client = new TrueNASClient({
+      host: preferences.address,
+      apiKey: preferences.apiKey,
+      secure: preferences.secure,
     });
+  }
+  return client;
+}
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch VMs: ${response.statusText}`);
+// Function to ensure client is connected with retry logic
+async function ensureConnected(): Promise<void> {
+  const maxRetries = 3;
+  let retries = 0;
+  
+  while (retries < maxRetries) {
+    try {
+      const clientInstance = getClient();
+      if (!clientInstance.isConnected()) {
+        await clientInstance.connect();
+        // Wait a bit more to ensure connection is fully established
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      return; // Connection successful
+    } catch (error) {
+      retries++;
+      if (retries >= maxRetries) {
+        throw error;
+      }
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, 1000 * retries));
     }
+  }
+}
 
-    return (await response.json()) as object[];
+// Function to fetch the list of VMs using the TrueNAS client
+async function fetchVMs(): Promise<VMState[]> {
+  try {
+    await ensureConnected();
+    const clientInstance = getClient();
+    return await clientInstance.getVMs();
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
-    showToast({ style: Toast.Style.Failure, title: `Error`, message: errorMessage });
+    showToast({ style: Toast.Style.Failure, title: "Error fetching VMs", message: errorMessage });
     return [];
   }
 }
 
-// Function to manage virtual machines
-async function manageVM(action: "start" | "stop", vmId: string, state: string) {
+// Function to manage virtual machines using the TrueNAS client
+async function manageVM(action: "start" | "stop", vmId: number, state: string) {
   if (state === "RUNNING" && action === "start") {
-    showToast({ style: Toast.Style.Failure, title: `VM is already running` });
+    showToast({ style: Toast.Style.Failure, title: "VM is already running" });
     return;
   } else if (state === "STOPPED" && action === "stop") {
-    showToast({ style: Toast.Style.Failure, title: `VM is already stopped` });
+    showToast({ style: Toast.Style.Failure, title: "VM is already stopped" });
     return;
   }
-  const url = `${TRUENAS_API_BASE_URL}/vm/id/${vmId}/${action}`;
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      agent,
-    });
+    await ensureConnected();
+    const clientInstance = getClient();
 
-    if (!response.ok) {
-      throw new Error(`Failed to ${action} VM: ${response.statusText}`);
+    if (action === "start") {
+      await clientInstance.startVM(vmId);
+      showToast({ style: Toast.Style.Success, title: "VM started successfully" });
+    } else {
+      await clientInstance.stopVM(vmId);
+      showToast({ style: Toast.Style.Success, title: "VM stopped successfully" });
     }
-
-    showToast({
-      style: Toast.Style.Success,
-      title: action === "start" ? `VM started successfully` : `VM stopped successfully`,
-    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
-    showToast({ style: Toast.Style.Failure, title: `Error`, message: errorMessage });
+    showToast({ style: Toast.Style.Failure, title: `Error ${action}ing VM`, message: errorMessage });
   }
 }
 
-// Function to restart a virtual machine
-// This function first stops the VM and then starts it again after a delay
-// Note: The delay is set to 5 seconds (5000 milliseconds) in this example
-async function restartVM(vmId: string, state: string) {
+// Function to restart a virtual machine using the TrueNAS client
+async function restartVM(vmId: number, state: string) {
   if (state === "STOPPED") {
-    showToast({ style: Toast.Style.Failure, title: `VM is stopped` });
+    showToast({ style: Toast.Style.Failure, title: "VM is stopped" });
     return;
   }
-  manageVM("stop", vmId, state);
-  setTimeout(() => {
-    manageVM("start", vmId, state);
-  }, 5000);
+
+  try {
+    await ensureConnected();
+    const clientInstance = getClient();
+    await clientInstance.restartVM(vmId);
+    showToast({ style: Toast.Style.Success, title: "VM restarted successfully" });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+    showToast({ style: Toast.Style.Failure, title: "Error restarting VM", message: errorMessage });
+  }
 }
 
 // Main command
 export default function Command() {
-  const [vms, setVMs] = React.useState<object[]>([]);
+  const [vms, setVMs] = React.useState<VMState[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
     async function loadVMs() {
-      const vmList: object[] = await fetchVMs();
+      const vmList = await fetchVMs();
       setVMs(vmList);
       setIsLoading(false);
     }
 
     loadVMs();
+  }, []);
+
+  // Cleanup function to disconnect client when component unmounts
+  React.useEffect(() => {
+    return () => {
+      if (client && client.isConnected()) {
+        client.disconnect();
+        client = null;
+      }
+    };
   }, []);
 
   return (
@@ -118,9 +141,9 @@ export default function Command() {
           subtitle={`Status: ${vm.status.state}`}
           actions={
             <ActionPanel>
-              <Action title="Start Vm" onAction={() => manageVM("start", vm.id, vm.status.state)} />
-              <Action title="Stop Vm" onAction={() => manageVM("stop", vm.id, vm.status.state)} />
-              <Action title="Restart Vm" onAction={() => restartVM(vm.id, vm.status.state)} />
+              <Action title="Start VM" onAction={() => manageVM("start", vm.id, vm.status.state)} />
+              <Action title="Stop VM" onAction={() => manageVM("stop", vm.id, vm.status.state)} />
+              <Action title="Restart VM" onAction={() => restartVM(vm.id, vm.status.state)} />
             </ActionPanel>
           }
         />

@@ -1,107 +1,129 @@
 import React from "react";
 import { showToast, Toast, getPreferenceValues, List, ActionPanel, Action } from "@raycast/api";
-import https from "https";
-import fetch from "node-fetch";
+import { TrueNASClient, AppState } from "./lib/truenas";
 
-// Define the TrueNAS API base URL
+// Get preferences
 const preferences = getPreferenceValues<{
-  apiUrl: string;
+  address: string;
   apiKey: string;
-  rejectUnauthorized: boolean;
+  secure: boolean;
 }>();
 
-const API_URL = preferences.apiUrl;
-const API_KEY = preferences.apiKey;
-const REJECT_UNAUTHORIZED = preferences.rejectUnauthorized;
-const TRUENAS_API_BASE_URL = `${API_URL}/api/v2.0`;
+// Global client instance - will be created lazily
+let client: TrueNASClient | null = null;
 
-const agent = new https.Agent({
-  rejectUnauthorized: REJECT_UNAUTHORIZED,
-});
-
-// Fectch the list of applications
-async function fetchApps(): Promise<object[]> {
-  const url = `${TRUENAS_API_BASE_URL}/chart/release`;
-
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      agent,
+// Function to get or create client instance
+function getClient(): TrueNASClient {
+  if (!client) {
+    client = new TrueNASClient({
+      host: preferences.address,
+      apiKey: preferences.apiKey,
+      secure: preferences.secure,
     });
+  }
+  return client;
+}
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch applications: ${response.statusText}`);
+// Function to ensure client is connected with retry logic
+async function ensureConnected(): Promise<void> {
+  const maxRetries = 3;
+  let retries = 0;
+  
+  while (retries < maxRetries) {
+    try {
+      const clientInstance = getClient();
+      if (!clientInstance.isConnected()) {
+        await clientInstance.connect();
+        // Wait a bit more to ensure connection is fully established
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      return; // Connection successful
+    } catch (error) {
+      retries++;
+      if (retries >= maxRetries) {
+        throw error;
+      }
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, 1000 * retries));
     }
+  }
+}
 
-    return (await response.json()) as object[];
+// Fetch the list of applications using TrueNAS client
+async function fetchApps(): Promise<AppState[]> {
+  try {
+    await ensureConnected();
+    const clientInstance = getClient();
+    return await clientInstance.getApps();
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
-    showToast({ style: Toast.Style.Failure, title: `Error`, message: errorMessage });
+    showToast({ style: Toast.Style.Failure, title: "Error fetching apps", message: errorMessage });
     return [];
   }
 }
 
-// Function to manage applications
-async function manageApp(action: 0 | 1, appName: string, state: string) {
-  if (state === "ACTIVE" && action === 1) {
-    showToast({ style: Toast.Style.Failure, title: `Application is already running` });
-    return;
-  } else if (state === "STOPPED" && action === 0) {
-    showToast({ style: Toast.Style.Failure, title: `Application is already stopped` });
+// Function to start an application
+async function startApp(appName: string, state: string) {
+  if (state === "ACTIVE") {
+    showToast({ style: Toast.Style.Failure, title: "Application is already running" });
     return;
   }
-  const url = `${TRUENAS_API_BASE_URL}/chart/release/scale`;
-  const body = {
-    release_name: appName,
-    scale_options: {
-      replica_count: action,
-    },
-  };
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      agent,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to ${action} application: ${response.statusText}`);
-    }
-
+    await ensureConnected();
+    const clientInstance = getClient();
+    await clientInstance.startApp(appName);
     showToast({
       style: Toast.Style.Success,
-      title: action === 1 ? `Application started successfully` : `Application stopped successfully`,
+      title: "Application started successfully",
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
-    showToast({ style: Toast.Style.Failure, title: `Error`, message: errorMessage });
+    showToast({ style: Toast.Style.Failure, title: "Error starting app", message: errorMessage });
+  }
+}
+
+// Function to stop an application
+async function stopApp(appName: string, state: string) {
+  if (state === "STOPPED") {
+    showToast({ style: Toast.Style.Failure, title: "Application is already stopped" });
+    return;
+  }
+
+  try {
+    await ensureConnected();
+    const clientInstance = getClient();
+    await clientInstance.stopApp(appName);
+    showToast({
+      style: Toast.Style.Success,
+      title: "Application stopped successfully",
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+    showToast({ style: Toast.Style.Failure, title: "Error stopping app", message: errorMessage });
   }
 }
 
 async function restartApp(appName: string, state: string) {
   if (state === "STOPPED") {
-    showToast({ style: Toast.Style.Failure, title: `Application is stopped` });
+    showToast({ style: Toast.Style.Failure, title: "Application is stopped" });
     return;
   }
-  manageApp(0, appName, state);
-  setTimeout(() => {
-    manageApp(1, appName, state);
-  }, 5000);
-  showToast({ style: Toast.Style.Success, title: `Application restarted successfully` });
+
+  try {
+    await ensureConnected();
+    const clientInstance = getClient();
+    await clientInstance.restartApp(appName);
+    showToast({ style: Toast.Style.Success, title: "Application restarted successfully" });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+    showToast({ style: Toast.Style.Failure, title: "Error restarting app", message: errorMessage });
+  }
 }
 
 // Main component
 export default function Command() {
-  const [apps, setApps] = React.useState<object[]>([]);
+  const [apps, setApps] = React.useState<AppState[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
 
   // Fetch the list of applications when the component mounts
@@ -114,18 +136,28 @@ export default function Command() {
     loadApps();
   }, []);
 
+  // Clean up WebSocket connection when component unmounts
+  React.useEffect(() => {
+    return () => {
+      if (client && client.isConnected()) {
+        client.disconnect();
+        client = null;
+      }
+    };
+  }, []);
+
   return (
     <List isLoading={isLoading}>
       {apps.map((app) => (
         <List.Item
-          key={app.name}
+          key={app.id}
           title={app.name}
-          subtitle={`State: ${app.status}`}
+          subtitle={`State: ${app.state}`}
           actions={
             <ActionPanel>
-              <Action title="Start" onAction={() => manageApp(1, app.name, app.status)} />
-              <Action title="Stop" onAction={() => manageApp(0, app.name, app.status)} />
-              <Action title="Restart" onAction={() => restartApp(app.name, app.status)} />
+              <Action title="Start" onAction={() => startApp(app.name, app.state)} />
+              <Action title="Stop" onAction={() => stopApp(app.name, app.state)} />
+              <Action title="Restart" onAction={() => restartApp(app.name, app.state)} />
             </ActionPanel>
           }
         />
