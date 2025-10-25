@@ -1,43 +1,32 @@
 import React from "react";
 import { showToast, Toast, getPreferenceValues, List, ActionPanel, Action } from "@raycast/api";
-import https from "https";
-import fetch from "node-fetch";
+import { TrueNASClient, AppState } from "./lib/truenas";
 
-// Define the TrueNAS API base URL
+// Get preferences
 const preferences = getPreferenceValues<{
-  apiUrl: string;
+  address: string;
   apiKey: string;
-  rejectUnauthorized: boolean;
+  secure: boolean;
 }>();
 
-const API_URL = preferences.apiUrl;
-const API_KEY = preferences.apiKey;
-const REJECT_UNAUTHORIZED = preferences.rejectUnauthorized;
-const TRUENAS_API_BASE_URL = `${API_URL}/api/v2.0`;
-
-const agent = new https.Agent({
-  rejectUnauthorized: REJECT_UNAUTHORIZED,
+// Create TrueNAS client instance
+const client = new TrueNASClient({
+  host: preferences.address,
+  apiKey: preferences.apiKey,
+  secure: preferences.secure,
 });
 
-// Fectch the list of applications
-async function fetchApps(): Promise<object[]> {
-  const url = `${TRUENAS_API_BASE_URL}/chart/release`;
-
+// Fetch the list of applications using TrueNAS client
+async function fetchApps(): Promise<AppState[]> {
   try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      agent,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch applications: ${response.statusText}`);
+    // Connect to TrueNAS if not already connected
+    if (!client.isConnected()) {
+      await client.connect();
     }
 
-    return (await response.json()) as object[];
+    // Fetch apps using the client
+    const apps = await client.getApps();
+    return apps;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
     showToast({ style: Toast.Style.Failure, title: `Error`, message: errorMessage });
@@ -45,41 +34,47 @@ async function fetchApps(): Promise<object[]> {
   }
 }
 
-// Function to manage applications
-async function manageApp(action: 0 | 1, appName: string, state: string) {
-  if (state === "ACTIVE" && action === 1) {
+// Function to start an application
+async function startApp(appName: string, state: string) {
+  if (state === "ACTIVE") {
     showToast({ style: Toast.Style.Failure, title: `Application is already running` });
     return;
-  } else if (state === "STOPPED" && action === 0) {
+  }
+
+  try {
+    // Ensure connection
+    if (!client.isConnected()) {
+      await client.connect();
+    }
+
+    await client.startApp(appName);
+    showToast({
+      style: Toast.Style.Success,
+      title: `Application started successfully`,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+    showToast({ style: Toast.Style.Failure, title: `Error`, message: errorMessage });
+  }
+}
+
+// Function to stop an application
+async function stopApp(appName: string, state: string) {
+  if (state === "STOPPED") {
     showToast({ style: Toast.Style.Failure, title: `Application is already stopped` });
     return;
   }
-  const url = `${TRUENAS_API_BASE_URL}/chart/release/scale`;
-  const body = {
-    release_name: appName,
-    scale_options: {
-      replica_count: action,
-    },
-  };
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      agent,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to ${action} application: ${response.statusText}`);
+    // Ensure connection
+    if (!client.isConnected()) {
+      await client.connect();
     }
 
+    await client.stopApp(appName);
     showToast({
       style: Toast.Style.Success,
-      title: action === 1 ? `Application started successfully` : `Application stopped successfully`,
+      title: `Application stopped successfully`,
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
@@ -92,16 +87,24 @@ async function restartApp(appName: string, state: string) {
     showToast({ style: Toast.Style.Failure, title: `Application is stopped` });
     return;
   }
-  manageApp(0, appName, state);
-  setTimeout(() => {
-    manageApp(1, appName, state);
-  }, 5000);
-  showToast({ style: Toast.Style.Success, title: `Application restarted successfully` });
+
+  try {
+    // Ensure connection
+    if (!client.isConnected()) {
+      await client.connect();
+    }
+
+    await client.restartApp(appName);
+    showToast({ style: Toast.Style.Success, title: `Application restarted successfully` });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+    showToast({ style: Toast.Style.Failure, title: `Error`, message: errorMessage });
+  }
 }
 
 // Main component
 export default function Command() {
-  const [apps, setApps] = React.useState<object[]>([]);
+  const [apps, setApps] = React.useState<AppState[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
 
   // Fetch the list of applications when the component mounts
@@ -114,18 +117,25 @@ export default function Command() {
     loadApps();
   }, []);
 
+  // Clean up WebSocket connection when component unmounts
+  React.useEffect(() => {
+    return () => {
+      client.disconnect();
+    };
+  }, []);
+
   return (
     <List isLoading={isLoading}>
       {apps.map((app) => (
         <List.Item
-          key={app.name}
+          key={app.id}
           title={app.name}
-          subtitle={`State: ${app.status}`}
+          subtitle={`State: ${app.state}`}
           actions={
             <ActionPanel>
-              <Action title="Start" onAction={() => manageApp(1, app.name, app.status)} />
-              <Action title="Stop" onAction={() => manageApp(0, app.name, app.status)} />
-              <Action title="Restart" onAction={() => restartApp(app.name, app.status)} />
+              <Action title="Start" onAction={() => startApp(app.name, app.state)} />
+              <Action title="Stop" onAction={() => stopApp(app.name, app.state)} />
+              <Action title="Restart" onAction={() => restartApp(app.name, app.state)} />
             </ActionPanel>
           }
         />
